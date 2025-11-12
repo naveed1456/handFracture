@@ -14,22 +14,35 @@ except Exception as e:
     st.error("Ultralytics not installed. Run: pip install ultralytics")
     raise e
 
-MODEL_PATH = "best.pt"           # hand-fracture-only weights
-FRACTURE_NAME = "fracture"       # expected class name in your model
-CONF_THRESH = 0.25               # default confidence threshold
-ICON = "🩻"                      # hand X-ray / fracture icon
+MODEL_PATH = "best.pt"             # hand-fracture-only weights
+FRACTURE_NAME = "fracture"         # expected class name in your model
+CONF_THRESH = 0.25                 # default confidence threshold
 
-# ---------- Page ----------
-st.set_page_config(page_title="Hand Fracture: Yes/No", page_icon=ICON, layout="centered")
-st.title(f"{ICON} Hand Fracture Detector")
-st.caption(f"Upload a hand/wrist X-ray. The model looks **only** for the 'fracture' class.")
+# ---------- Icons ----------
+ICON_EMOJI = "🩻"                  # shown in Streamlit title
+ICON_FILE = "hand_fracture_icon.png"  # must exist in repo root
 
-# Safe image display (handles different Streamlit versions)
+# ---------- Page Config ----------
+try:
+    favicon = Image.open(ICON_FILE)
+except Exception:
+    favicon = None  # fallback if missing
+
+st.set_page_config(
+    page_title="Hand Fracture: Yes/No",
+    page_icon=favicon if favicon is not None else "🩻",
+    layout="centered",
+)
+
+st.title(f"{ICON_EMOJI} Hand Fracture Detector")
+st.caption("Upload a hand/wrist X-ray. The model looks **only** for the 'fracture' class.")
+
+# ---------- Utility ----------
 def show_image(img, caption="Image"):
     try:
-        st.image(img, caption=f" {caption}", use_container_width=True)
+        st.image(img, caption=caption, use_container_width=True)
     except TypeError:
-        st.image(img, caption=f" {caption}", use_column_width=True)
+        st.image(img, caption=caption, use_column_width=True)
 
 @st.cache_resource(show_spinner=True)
 def load_model():
@@ -47,18 +60,17 @@ def find_fracture_id(names_dict, target=FRACTURE_NAME):
             return cid
     return None
 
-# ---------- UI: Uploader ----------
-uploaded_file = st.file_uploader(f"Upload a hand X-ray image", type=["jpg", "jpeg", "png", "bmp", "webp"])
+# ---------- Upload ----------
+uploaded_file = st.file_uploader("Upload a hand X-ray image", type=["jpg", "jpeg", "png", "bmp", "webp"])
 
 if uploaded_file is not None:
-    # Save uploaded image temporarily
     with tempfile.NamedTemporaryFile(delete=False, suffix=".jpg") as tmp_file:
         tmp_file.write(uploaded_file.getvalue())
         temp_image_path = tmp_file.name
 
-    # ---------- Inference ----------
+    # ---------- Prediction ----------
     model = load_model()
-    with st.spinner(f"Detecting fractures..."):
+    with st.spinner("Detecting fractures..."):
         results = model.predict(
             source=temp_image_path,
             conf=CONF_THRESH,
@@ -68,7 +80,7 @@ if uploaded_file is not None:
         )
 
     if not results:
-        st.error(f"No results returned.")
+        st.error("No results returned.")
         try:
             os.remove(temp_image_path)
         except Exception:
@@ -79,7 +91,7 @@ if uploaded_file is not None:
     names = res.names
     fracture_id = find_fracture_id(names, FRACTURE_NAME)
 
-    # ---------- Fracture-only decision ----------
+    # ---------- Detection ----------
     fracture_found = False
     top_conf = None
     idxs = []
@@ -92,13 +104,13 @@ if uploaded_file is not None:
             fracture_found = True
             top_conf = float(np.max(conf[idxs]))
 
-    st.subheader(f"Result")
-    result_image_pil = None  # will remain None if no fracture
+    st.subheader("Result")
+    result_image_pil = None
 
     if fracture_found:
         st.success(f"Fracture detected (confidence: {top_conf:.2f})")
 
-        # ---------- Annotated image (fracture boxes only) ----------
+        # ---------- Annotated output ----------
         try:
             import cv2
             img_pil = Image.open(temp_image_path).convert("RGB")
@@ -111,12 +123,9 @@ if uploaded_file is not None:
             for i in idxs:
                 x1, y1, x2, y2 = xyxy[i].astype(int)
                 label = f"{names.get(fracture_id, 'fracture')} {confs[i]:.2f}"
-                # box
                 cv2.rectangle(img_bgr, (x1, y1), (x2, y2), (0, 255, 255), 2)
-                # label bg
                 ((tw, th), _) = cv2.getTextSize(label, cv2.FONT_HERSHEY_SIMPLEX, 0.6, 2)
                 cv2.rectangle(img_bgr, (x1, max(0, y1 - th - 8)), (x1 + tw + 6, y1), (0, 255, 255), -1)
-                # label text
                 cv2.putText(img_bgr, label, (x1 + 3, y1 - 5),
                             cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 0, 0), 2, cv2.LINE_AA)
 
@@ -132,15 +141,15 @@ if uploaded_file is not None:
     else:
         if fracture_id is None:
             st.warning(f"Class '{FRACTURE_NAME}' not found in model labels: {list(names.values())}")
-        st.info(f"No fracture detected.")
+        st.info("No fracture detected.")
 
-    # ---------- Download (only when image exists) ----------
+    # ---------- Download ----------
     if result_image_pil is not None:
         output_path = "fracture_result.jpg"
         result_image_pil.save(output_path)
         with open(output_path, "rb") as f:
             st.download_button(
-                f"Download Result",
+                "Download Result",
                 f,
                 file_name="fracture_result.jpg",
                 mime="image/jpeg"
@@ -153,4 +162,4 @@ if uploaded_file is not None:
         pass
 
 else:
-    st.info(f"Upload an image to get a YES/NO answer for hand fractures.")
+    st.info("Upload an image to get a YES/NO answer for hand fractures.")
