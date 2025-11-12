@@ -13,9 +13,17 @@ except Exception as e:
     raise e
 
 # ----- Config -----
-MODEL_PATH = "best.pt"       # keep your best.pt next to this file
-FRACTURE_NAME = "fracture"   # adjust if your class name is different
-CONF_THRESH = 0.25           # decision threshold
+MODEL_PATH = "best.pt"
+FRACTURE_NAME = "fracture"
+CONF_THRESH = 0.25
+
+# Safe image display keyword (auto-handles Streamlit version)
+def show_image(img, caption="Image"):
+    try:
+        st.image(img, caption=caption, use_container_width=True)
+    except TypeError:
+        # fallback for older Streamlit
+        st.image(img, caption=caption, use_column_width=True)
 
 st.set_page_config(page_title="Hand Fracture: Yes/No", page_icon="🦴", layout="centered")
 st.title("🦴 Hand Fracture Detector")
@@ -27,16 +35,12 @@ def load_model():
     return YOLO(MODEL_PATH)
 
 def find_fracture_id(names_dict, target=FRACTURE_NAME):
-    """
-    Try exact match, otherwise fall back to substring match (e.g. 'hand_fracture').
-    """
-    # exact
+    t = target.lower().strip()
     for cid, cname in names_dict.items():
-        if cname.lower().strip() == target.lower().strip():
+        if cname.lower().strip() == t:
             return cid
-    # contains
     for cid, cname in names_dict.items():
-        if target.lower().strip() in cname.lower().strip():
+        if t in cname.lower().strip():
             return cid
     return None
 
@@ -48,12 +52,13 @@ if uploaded:
 
     with st.spinner("Analyzing..."):
         results = model.predict(source=np.array(img), conf=CONF_THRESH, verbose=False)
+
     if not results:
         st.error("No results returned.")
         st.stop()
 
     res = results[0]
-    names = res.names  # {class_id: class_name}
+    names = res.names
     fracture_id = find_fracture_id(names, FRACTURE_NAME)
 
     fracture_found = False
@@ -76,36 +81,31 @@ if uploaded:
             st.warning(f"Class '{FRACTURE_NAME}' not found in model labels: {list(names.values())}")
         st.info("❌ No fracture detected.")
 
-    # ---- Highlight fracture boxes (if any) ----
-    # We'll draw boxes only for the fracture class on a copy of the image
+    # ---- Highlight boxes ----
     try:
-        import cv2  # ensure opencv-python-headless is installed
-        img_np = np.array(img).copy()  # RGB
-
+        import cv2
+        img_np = np.array(img)
         if fracture_found:
             xyxy = res.boxes.xyxy.cpu().numpy()
             confs = res.boxes.conf.cpu().numpy()
+            img_bgr = cv2.cvtColor(img_np, cv2.COLOR_RGB2BGR)
 
             for i in idxs:
                 x1, y1, x2, y2 = xyxy[i].astype(int)
                 label = f"{names.get(fracture_id, 'fracture')} {confs[i]:.2f}"
-
-                # draw rectangle + label (convert to BGR for cv2 drawing then back to RGB)
-                img_bgr = cv2.cvtColor(img_np, cv2.COLOR_RGB2BGR)
-                cv2.rectangle(img_bgr, (x1, y1), (x2, y2), (0, 255, 255), 2)  # box
-                # label background
+                cv2.rectangle(img_bgr, (x1, y1), (x2, y2), (0, 255, 255), 2)
                 ((tw, th), _) = cv2.getTextSize(label, cv2.FONT_HERSHEY_SIMPLEX, 0.6, 2)
                 cv2.rectangle(img_bgr, (x1, max(0, y1 - th - 8)), (x1 + tw + 6, y1), (0, 255, 255), -1)
-                # label text
-                cv2.putText(img_bgr, label, (x1 + 3, y1 - 5), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 0, 0), 2, cv2.LINE_AA)
-                img_np = cv2.cvtColor(img_bgr, cv2.COLOR_BGR2RGB)
+                cv2.putText(img_bgr, label, (x1 + 3, y1 - 5),
+                            cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 0, 0), 2, cv2.LINE_AA)
 
-            st.image(img_np, caption="Fracture highlighted", use_container_width=True)
+            img_rgb_out = cv2.cvtColor(img_bgr, cv2.COLOR_BGR2RGB)
+            show_image(img_rgb_out, "Fracture highlighted")
         else:
-            st.image(img, caption="Uploaded image", use_container_width=True)
+            show_image(img, "Uploaded image")
     except Exception as e:
         st.warning(f"Could not highlight boxes automatically ({e}). Showing original image.")
-        st.image(img, caption="Uploaded image", use_container_width=True)
+        show_image(img, "Uploaded image")
 
 else:
     st.info("Upload an image to get a YES/NO answer.")
