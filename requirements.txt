@@ -1,0 +1,7 @@
+streamlit
+ultralytics
+torch      # or torch==2.4.* (CPU) / install CUDA build per your system
+opencv-python-headless
+pillow
+numpy
+pandas
