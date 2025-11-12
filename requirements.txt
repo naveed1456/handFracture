@@ -1,14 +1,10 @@
+--index-url https://pypi.org/simple
 --extra-index-url https://download.pytorch.org/whl/cpu
-pip==24.2
-setuptools<70
-wheel
-typing_extensions==4.12.2
-protobuf<5
 
-numpy==1.26.4
-pillow==10.4.0
-opencv-python-headless==4.9.0.80
-torch==2.2.2+cpu
-torchvision==0.17.2+cpu
-ultralytics==8.2.103
 streamlit==1.39.0
+ultralytics==8.3.25
+torch==2.9.1+cpu
+torchvision==0.20.1+cpu
+opencv-python-headless==4.10.0.84
+numpy==2.1.3
+pillow==10.4.0
